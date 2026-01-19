@@ -126,9 +126,9 @@ func sendToDestination(dest Destination, sourcePath, line string) error {
 		return nil
 	}
 
-	token := os.Getenv("SPLUNK_HEC_TOKEN")
+	token := os.Getenv("SPLUNK_HEC_TOKEN_GO")
 	if token == "" {
-		return fmt.Errorf("SPLUNK_HEC_TOKEN not set; cannot send to Splunk")
+		return fmt.Errorf("SPLUNK_HEC_TOKEN_GO not set; cannot send to Splunk")
 	}
 
 	// Splunk HEC event format
