@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"time"
 )
 
 type AgentConfigResponse struct {
@@ -28,7 +31,6 @@ type Destination struct {
 	URL  string `json:"url"`
 }
 
-// NOTE: If control plane is on a different VM, change this URL
 const (
 	agentID         = "ubuntu-01"
 	controlPlaneURL = "http://localhost:8080"
@@ -37,6 +39,19 @@ const (
 func main() {
 	log.Printf("agent %s starting", agentID)
 
+	cfg := fetchConfig()
+
+	for _, src := range cfg.Config.Sources {
+		if src.Type == "file" {
+			go tailFile(src.Path)
+		}
+	}
+
+	// Keep agent running
+	select {}
+}
+
+func fetchConfig() AgentConfigResponse {
 	url := fmt.Sprintf("%s/agents/%s/config", controlPlaneURL, agentID)
 	log.Printf("fetching config from %s", url)
 
@@ -46,16 +61,34 @@ func main() {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("control plane returned status %d", resp.StatusCode)
-	}
-
 	var cfg AgentConfigResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
 		log.Fatalf("error decoding config: %v", err)
 	}
 
 	log.Printf("got config version %s", cfg.Version)
-	log.Printf("sources: %+v", cfg.Config.Sources)
-	log.Printf("destination: %+v", cfg.Config.Destination)
+	return cfg
+}
+
+func tailFile(path string) {
+	log.Printf("starting file tail for %s", path)
+
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatalf("failed to open file %s: %v", path, err)
+	}
+
+	// Start at end of file
+	file.Seek(0, os.SEEK_END)
+
+	reader := bufio.NewReader(file)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		log.Printf("[file:%s] %s", path, line)
+	}
 }
