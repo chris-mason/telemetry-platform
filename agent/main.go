@@ -121,11 +121,12 @@ func tailFile(path string, dest Destination) {
 }
 
 func sendToDestination(dest Destination, sourcePath, line string) error {
+	// Only handle Splunk HEC for now
 	if dest.Type != "splunk_hec" {
-		// nothing implemented yet for other types
 		return nil
 	}
 
+	// Read token from env var
 	token := os.Getenv("SPLUNK_HEC_TOKEN_GO")
 	if token == "" {
 		return fmt.Errorf("SPLUNK_HEC_TOKEN_GO not set; cannot send to Splunk")
@@ -149,6 +150,7 @@ func sendToDestination(dest Destination, sourcePath, line string) error {
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
+
 	req.Header.Set("Authorization", "Splunk "+token)
 	req.Header.Set("Content-Type", "application/json")
 
