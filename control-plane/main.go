@@ -56,7 +56,7 @@ func main() {
 				},
 				Destination: Destination{
 				    Type: "splunk_hec",
-				    URL:  "http://192.168.245.132:8000//services/collector/event",
+				    URL:  "http://192.168.245.132:8000/services/collector/event",
 				},
 
 			},
