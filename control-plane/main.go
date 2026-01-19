@@ -55,9 +55,10 @@ func main() {
 					},
 				},
 				Destination: Destination{
-					Type: "http",
-					URL:  "http://localhost:8081/ingest/logs",
+				    Type: "splunk_hec",
+				    URL:  "http://192.168.245.132:8000//services/collector/event",
 				},
+
 			},
 		}
 
