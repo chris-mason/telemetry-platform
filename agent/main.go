@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -37,13 +37,15 @@ const (
 )
 
 func main() {
-	log.Printf("agent %s starting", agentID)
+	log.Printf("agent %s starting (DEBUG FILE READER)", agentID)
 
 	cfg := fetchConfig()
 
 	for _, src := range cfg.Config.Sources {
 		if src.Type == "file" {
-			go tailFile(src.Path)
+			go debugReadWholeFileLoop(src.Path)
+		} else {
+			log.Printf("source type %s not implemented yet", src.Type)
 		}
 	}
 
@@ -61,6 +63,10 @@ func fetchConfig() AgentConfigResponse {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("control plane returned status %d", resp.StatusCode)
+	}
+
 	var cfg AgentConfigResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
 		log.Fatalf("error decoding config: %v", err)
@@ -70,25 +76,28 @@ func fetchConfig() AgentConfigResponse {
 	return cfg
 }
 
-func tailFile(path string) {
-	log.Printf("starting file tail for %s", path)
-
-	file, err := os.Open(path)
-	if err != nil {
-		log.Fatalf("failed to open file %s: %v", path, err)
-	}
-
-	// Start at end of file
-	file.Seek(0, os.SEEK_END)
-
-	reader := bufio.NewReader(file)
-
+// debugReadWholeFileLoop repeatedly reads the entire file and prints all lines.
+// Super noisy, but great to prove the agent can read the file.
+func debugReadWholeFileLoop(path string) {
 	for {
-		line, err := reader.ReadString('\n')
+		log.Printf("[DEBUG] reading entire file %s", path)
+
+		data, err := os.ReadFile(path)
 		if err != nil {
-			time.Sleep(1 * time.Second)
+			log.Printf("[DEBUG] failed to read %s: %v", path, err)
+			time.Sleep(5 * time.Second)
 			continue
 		}
-		log.Printf("[file:%s] %s", path, line)
+
+		text := string(data)
+		lines := strings.Split(text, "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			log.Printf("[AGENT READ][%s] %s", path, line)
+		}
+
+		time.Sleep(5 * time.Second)
 	}
 }
