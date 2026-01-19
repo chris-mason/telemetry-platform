@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,13 +39,14 @@ const (
 )
 
 func main() {
-	log.Printf("agent %s starting (TAIL MODE)", agentID)
+	log.Printf("agent %s starting (TAIL -> DESTINATION)", agentID)
 
 	cfg := fetchConfig()
+	dest := cfg.Config.Destination
 
 	for _, src := range cfg.Config.Sources {
 		if src.Type == "file" && src.Path != "" {
-			go tailFile(src.Path)
+			go tailFile(src.Path, dest)
 		} else {
 			log.Printf("source not supported yet: %+v", src)
 		}
@@ -74,10 +76,11 @@ func fetchConfig() AgentConfigResponse {
 	}
 
 	log.Printf("got config version %s", cfg.Version)
+	log.Printf("destination from control plane: %+v", cfg.Config.Destination)
 	return cfg
 }
 
-func tailFile(path string) {
+func tailFile(path string, dest Destination) {
 	log.Printf("tailing %s (new lines only)", path)
 
 	for {
@@ -88,7 +91,6 @@ func tailFile(path string) {
 			continue
 		}
 
-		// Start at end so we only see new lines from now on
 		if _, err := f.Seek(0, io.SeekEnd); err != nil {
 			log.Printf("seek end failed on %s: %v", path, err)
 		}
@@ -104,11 +106,70 @@ func tailFile(path string) {
 				}
 				log.Printf("read error on %s: %v (reopening file)", path, err)
 				_ = f.Close()
-				break // reopen outer loop (handles rotate/truncate too)
+				break
 			}
 
-			// Print exactly what the agent ingested
+			// still log locally for debugging
 			log.Printf("[TAIL][%s] %s", path, line)
+
+			// send to destination (Splunk HEC)
+			if err := sendToDestination(dest, path, line); err != nil {
+				log.Printf("send error: %v", err)
+			}
 		}
 	}
+}
+
+func sendToDestination(dest Destination, sourcePath, line string) error {
+	if dest.Type != "splunk_hec" {
+		// nothing implemented yet for other types
+		return nil
+	}
+
+	token := os.Getenv("SPLUNK_HEC_TOKEN")
+	if token == "" {
+		return fmt.Errorf("SPLUNK_HEC_TOKEN not set; cannot send to Splunk")
+	}
+
+	// Splunk HEC event format
+	payload := map[string]interface{}{
+		"event":      line,
+		"source":     sourcePath,
+		"sourcetype": "lab:linux:auth",
+		"time":       time.Now().Unix(),
+		"host":       getHostname(),
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", dest.URL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("Authorization", "Splunk "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http post: %w", err)
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("splunk hec returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func getHostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return "unknown-host"
+	}
+	return h
 }
