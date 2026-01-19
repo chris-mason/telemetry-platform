@@ -28,15 +28,15 @@ type Destination struct {
 	URL  string `json:"url"`
 }
 
+// NOTE: If control plane is on a different VM, change this URL
 const (
 	agentID         = "ubuntu-01"
 	controlPlaneURL = "http://localhost:8080"
 )
 
 func main() {
-	log.Printf("agent %s starting up", agentID)
+	log.Printf("agent %s starting", agentID)
 
-	// Build URL like: http://localhost:8080/agents/ubuntu-01/config
 	url := fmt.Sprintf("%s/agents/%s/config", controlPlaneURL, agentID)
 	log.Printf("fetching config from %s", url)
 
@@ -58,7 +58,4 @@ func main() {
 	log.Printf("got config version %s", cfg.Version)
 	log.Printf("sources: %+v", cfg.Config.Sources)
 	log.Printf("destination: %+v", cfg.Config.Destination)
-
-	// For now, just exit after printing config.
-	// Next step: we'll actually start ingestion based on cfg.
 }
